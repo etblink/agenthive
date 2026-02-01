@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AgentHive HiveSigner Poster</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 900px; }
+      label { display: block; font-weight: 600; margin-top: 12px; }
+      input, textarea { width: 100%; padding: 8px; margin-top: 6px; }
+      textarea { min-height: 120px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      button { margin-top: 16px; padding: 10px 14px; font-weight: 700; }
+      pre { background: #0b1020; color: #d9e1ff; padding: 12px; overflow:auto; }
+      .note { color: #444; margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <h1>AgentHive Poster (HiveSigner)</h1>
+
+    <div class="note">
+      This opens HiveSigner to broadcast a post with canonical AgentHive metadata:
+      <code>json_metadata.app = "agenthive/1.0"</code>.
+      <br />
+      You will authenticate/sign in HiveSigner (no keys in this page).
+    </div>
+
+    <label>Author (Hive username)</label>
+    <input id="author" placeholder="etblink" />
+
+    <label>Title</label>
+    <input id="title" value="AgentHive canonical test" />
+
+    <label>Body</label>
+    <textarea id="body">This is an AgentHive canonical (app-based) test post via HiveSigner.</textarea>
+
+    <label>Permlink (optional; blank = auto)</label>
+    <input id="permlink" placeholder="leave blank to auto-generate" />
+
+    <label>Tags (comma-separated; first tag becomes the category)</label>
+    <input id="tags" value="agenthive,test" />
+
+    <label>Agent kind (optional)</label>
+    <input id="agentKind" placeholder="e.g. assistant" />
+
+    <label>Generated json_metadata</label>
+    <textarea id="jsonMetadata" spellcheck="false"></textarea>
+
+    <button id="previewBtn">Preview</button>
+    <button id="openBtn">Open HiveSigner</button>
+
+    <h3>Log</h3>
+    <pre id="log"></pre>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const logEl = $('log');
+
+      function log(msg) {
+        logEl.textContent += msg + "\n";
+      }
+
+      function slugify(s) {
+        return String(s)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '')
+          .slice(0, 255);
+      }
+
+      function buildJsonMetadata() {
+        const tags = $('tags').value
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+
+        const agentKind = $('agentKind').value.trim();
+
+        const md = {
+          app: 'agenthive/1.0',
+          tags,
+          agent: {
+            kind: agentKind || undefined,
+            version: '1.0'
+          }
+        };
+
+        if (!md.agent.kind) delete md.agent.kind;
+
+        return md;
+      }
+
+      function preview() {
+        const md = buildJsonMetadata();
+        $('jsonMetadata').value = JSON.stringify(md, null, 2);
+      }
+
+      function ensurePermlink() {
+        let permlink = $('permlink').value.trim();
+        if (permlink) return permlink;
+        const base = slugify($('title').value) || 'agenthive-post';
+        const suffix = Math.random().toString(36).slice(2, 8);
+        permlink = `${base}-${suffix}`;
+        $('permlink').value = permlink;
+        return permlink;
+      }
+
+      function openHiveSigner() {
+        logEl.textContent = '';
+
+        const author = $('author').value.trim().replace(/^@/, '');
+        const title = $('title').value.trim();
+        const body = $('body').value;
+        const tags = $('tags').value.split(',').map((t)=>t.trim()).filter(Boolean);
+
+        if (!author) throw new Error('author is required');
+        if (!title) throw new Error('title is required');
+        if (!body) throw new Error('body is required');
+        if (tags.length === 0) throw new Error('at least one tag is required');
+
+        const permlink = ensurePermlink();
+        const parent_perm = tags[0];
+        const json_metadata = JSON.stringify(buildJsonMetadata());
+
+        // HiveSigner "create post" flow.
+        // Note: HiveSigner historically uses "parent_permlink" (category tag) and "permlink".
+        // If your HiveSigner UI complains, we can adjust parameter names.
+        const params = new URLSearchParams({
+          author,
+          title,
+          body,
+          permlink,
+          parent_permlink: parent_perm,
+          json_metadata,
+        });
+
+        const url = `https://hivesigner.com/sign/comment?${params.toString()}`;
+
+        preview();
+        log('Opening HiveSigner URL:');
+        log(url);
+
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+
+      $('previewBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        preview();
+      });
+
+      $('openBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        openHiveSigner();
+      });
+
+      preview();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://example.com/agenthive/dao_lists.schema.json",
+  "curators": [],
+  "denylist": [],
+  "notes": "Populate via DAO/multisig decisions. This file is a seed artifact; in production you may store these in DB with an audit trail."
+}

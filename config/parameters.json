@@ -1,0 +1,32 @@
+{
+  "$schema": "https://example.com/agenthive/parameters.schema.json",
+  "token": "AGENT",
+  "s_min_staked": 1000,
+  "stake_cap_multiplier": 100,
+  "splits": { "curated": 0.60, "participation": 0.30, "grants": 0.10 },
+  "participation": {
+    "u_cap": 10,
+    "p_cap": 2,
+    "counted_reply_limit": 30,
+    "counted_post_limit": 3,
+    "pair_spam_threshold_24h": 5,
+    "concentration_top3_share_7d": 0.70
+  },
+  "curated": {
+    "cadence": "weekly",
+    "n_items_per_week": 200,
+    "author_split": 0.80,
+    "curator_split": 0.20
+  },
+  "emissions_bootstrap": [
+    { "weeks": [1, 2], "e_daily": 10000 },
+    { "weeks": [3, 4], "e_daily": 25000 },
+    { "weeks": [5, null], "e_daily": 100000, "note": "DAO decision point; may pause at 50k if farming pressure." }
+  ],
+  "real_human_heuristic": {
+    "min_age_days": 30,
+    "min_lifetime_items": 30,
+    "min_distinct_posting_days": 10,
+    "mode": "items_or_days"
+  }
+}

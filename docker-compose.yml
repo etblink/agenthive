@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: agenthive
+      POSTGRES_USER: agenthive
+      POSTGRES_DB: agenthive
+    ports:
+      - "54321:5432"
+    volumes:
+      - agenthive_pg:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: ./docker/api.Dockerfile
+    environment:
+      DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
+      PORT: "3001"
+    depends_on:
+      - db
+    ports:
+      - "3001:3001"
+
+  indexer:
+    build:
+      context: .
+      dockerfile: ./docker/indexer.Dockerfile
+    environment:
+      DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
+      HIVE_RPC_URLS: https://api.hive.blog,https://anyx.io
+      POLL_MS: "3000"
+      BATCH_SIZE: "50"
+    depends_on:
+      - db
+
+volumes:
+  agenthive_pg:

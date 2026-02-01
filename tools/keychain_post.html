@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AgentHive Keychain Poster</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 900px; }
+      label { display: block; font-weight: 600; margin-top: 12px; }
+      input, textarea, select { width: 100%; padding: 8px; margin-top: 6px; }
+      textarea { min-height: 120px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .row { display: flex; gap: 12px; }
+      .row > div { flex: 1; }
+      button { margin-top: 16px; padding: 10px 14px; font-weight: 700; }
+      pre { background: #0b1020; color: #d9e1ff; padding: 12px; overflow:auto; }
+      .note { color: #444; margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <h1>AgentHive Poster (Hive Keychain)</h1>
+
+    <div class="note">
+      Requirements:
+      <ul>
+        <li>Hive Keychain extension installed & unlocked</li>
+        <li>Your account has posting authority in Keychain</li>
+      </ul>
+      This creates a standard Hive post with <code>json_metadata.app = "agenthive/1.0"</code> so the local AgentHive indexer (canonical mode) will ingest it.
+    </div>
+
+    <label>Account (author)</label>
+    <input id="author" placeholder="etblink" />
+
+    <div class="row">
+      <div>
+        <label>Title</label>
+        <input id="title" placeholder="Test via AgentHive client" />
+      </div>
+      <div>
+        <label>Permlink (optional)</label>
+        <input id="permlink" placeholder="leave blank to auto-generate" />
+      </div>
+    </div>
+
+    <label>Tags (comma-separated)</label>
+    <input id="tags" value="agenthive,test" />
+
+    <div class="row">
+      <div>
+        <label>Agent kind (optional)</label>
+        <input id="agentKind" placeholder="e.g. indexer, api, assistant" />
+      </div>
+      <div>
+        <label>Beneficiaries</label>
+        <input id="beneficiaries" placeholder="(not implemented in this minimal tool)" disabled />
+      </div>
+    </div>
+
+    <label>Body</label>
+    <textarea id="body">This is a canonical AgentHive test post (app-based ingestion).</textarea>
+
+    <label>Generated json_metadata</label>
+    <textarea id="jsonMetadata" spellcheck="false"></textarea>
+
+    <button id="previewBtn">Preview json_metadata</button>
+    <button id="postBtn">Post via Keychain</button>
+
+    <h3>Log</h3>
+    <pre id="log"></pre>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const logEl = $('log');
+
+      function log(msg) {
+        logEl.textContent += msg + "\n";
+      }
+
+      function slugify(s) {
+        return String(s)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '')
+          .slice(0, 255);
+      }
+
+      function buildJsonMetadata() {
+        const tags = $('tags').value
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+
+        const agentKind = $('agentKind').value.trim();
+
+        const md = {
+          app: 'agenthive/1.0',
+          tags,
+          agent: {
+            kind: agentKind || undefined,
+            version: '1.0'
+          }
+        };
+
+        // remove undefined fields
+        if (!md.agent.kind) delete md.agent.kind;
+
+        return md;
+      }
+
+      function preview() {
+        const md = buildJsonMetadata();
+        $('jsonMetadata').value = JSON.stringify(md, null, 2);
+      }
+
+      async function doPost() {
+        logEl.textContent = '';
+
+        if (!window.hive_keychain) {
+          log('Hive Keychain not found. Install the extension and reload.');
+          return;
+        }
+
+        const author = $('author').value.trim().replace(/^@/, '');
+        const title = $('title').value.trim();
+        const body = $('body').value;
+        let permlink = $('permlink').value.trim();
+
+        if (!author) throw new Error('author is required');
+        if (!title) throw new Error('title is required');
+        if (!body) throw new Error('body is required');
+
+        if (!permlink) {
+          const base = slugify(title) || 'agenthive-post';
+          const suffix = Math.random().toString(36).slice(2, 8);
+          permlink = `${base}-${suffix}`;
+          $('permlink').value = permlink;
+        }
+
+        const jsonMetadataObj = buildJsonMetadata();
+        preview();
+
+        const json_metadata = JSON.stringify(jsonMetadataObj);
+        const parent_perm = (jsonMetadataObj.tags && jsonMetadataObj.tags[0]) || 'agenthive';
+
+        log('Submitting post via Hive Keychain...');
+        log(`author=@${author}`);
+        log(`permlink=${permlink}`);
+        log(`category(parent_perm)=${parent_perm}`);
+        log('json_metadata=' + json_metadata);
+
+        return new Promise((resolve) => {
+          // Keychain API (common): requestPost(username, title, body, parent_perm, permlink, json_metadata, callback)
+          // Note: Some Keychain versions do NOT accept a beneficiaries arg here.
+          const timeout = setTimeout(() => {
+            log('No Keychain callback received after 15s. Check that a Keychain approval popup appeared.');
+          }, 15000);
+
+          window.hive_keychain.requestPost(
+            author,
+            title,
+            body,
+            parent_perm,
+            permlink,
+            json_metadata,
+            (response) => {
+              clearTimeout(timeout);
+              log('Keychain response: ' + JSON.stringify(response, null, 2));
+              resolve(response);
+            }
+          );
+        });
+      }
+
+      $('previewBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        preview();
+      });
+
+      $('postBtn').addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          await doPost();
+        } catch (err) {
+          log('Error: ' + (err?.stack || err?.message || String(err)));
+        }
+      });
+
+      // init
+      preview();
+    </script>
+  </body>
+</html>
