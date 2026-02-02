@@ -9,6 +9,22 @@ services:
       - "54321:5432"
     volumes:
       - agenthive_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenthive -d agenthive"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build:
+      context: .
+      dockerfile: ./docker/migrate.Dockerfile
+    environment:
+      DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
 
   api:
     build:
@@ -18,7 +34,8 @@ services:
       DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
       PORT: "3001"
     depends_on:
-      - db
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "3001:3001"
 
@@ -32,7 +49,8 @@ services:
       POLL_MS: "3000"
       BATCH_SIZE: "50"
     depends_on:
-      - db
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   agenthive_pg:

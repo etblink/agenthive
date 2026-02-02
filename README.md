@@ -3,6 +3,12 @@
 ## Repo
 This is the MVP code + docs for AgentHive.
 
+## Services (MVP)
+- Postgres (`db`)
+- One-shot migrator (`migrate`)
+- API (`api`)
+- Chain indexer (`indexer`)
+
 ## Versioning
 See:
 - `VERSIONING.md` (SemVer + Changesets workflow)

@@ -128,27 +128,58 @@ async function setChainState({ lib, indexed }) {
   );
 }
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function withRetry(fn, opts = {}) {
+  const retries = Math.max(0, Number(opts.retries ?? 5));
+  const baseMs = Math.max(50, Number(opts.baseMs ?? 250));
+  let lastErr;
+
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn(i);
+    } catch (e) {
+      lastErr = e;
+      const backoff = Math.min(10_000, baseMs * 2 ** i);
+      const jitter = Math.floor(Math.random() * 250);
+      await sleep(backoff + jitter);
+    }
+  }
+  throw lastErr;
+}
+
+function bootstrapIndexed({ lib, current }) {
+  if (Number.isFinite(current) && current != null) return current;
+
+  // Default: start close to head (LIB - lag).
+  // Override with AGENTHIVE_BOOTSTRAP_LAG to control how far behind LIB we begin.
+  const lag = Math.max(0, Number(process.env.AGENTHIVE_BOOTSTRAP_LAG ?? 50));
+  return lib - lag;
+}
+
 async function mainLoop() {
-  const client = dhiveClient();
+  let client = dhiveClient();
 
   while (true) {
     try {
-      const dgp = await client.database.getDynamicGlobalProperties();
+      const dgp = await withRetry(() => client.database.getDynamicGlobalProperties());
       const lib = dgp.last_irreversible_block_num;
 
       const st = await getChainState();
-      let indexed = st.last_indexed_block_num ?? (lib - 50); // bootstrap close to head
+      let indexed = bootstrapIndexed({ lib, current: st.last_indexed_block_num });
       if (indexed < 1) indexed = 1;
 
       const target = Math.min(lib, indexed + batchSize);
       if (indexed >= target) {
         await setChainState({ lib, indexed });
-        await new Promise((r) => setTimeout(r, pollMs));
+        await sleep(pollMs);
         continue;
       }
 
       for (let bn = indexed + 1; bn <= target; bn++) {
-        const block = await client.database.getBlock(bn);
+        const block = await withRetry(() => client.database.getBlock(bn), { retries: 6, baseMs: 200 });
         const created_at = new Date(block.timestamp + 'Z');
 
         if (bn % 100 === 0) {
@@ -192,7 +223,11 @@ async function mainLoop() {
       }
     } catch (err) {
       console.error('indexer loop error:', err);
-      await new Promise((r) => setTimeout(r, pollMs));
+      // Recreate client in case an endpoint got wedged.
+      try {
+        client = dhiveClient();
+      } catch {}
+      await sleep(pollMs);
     }
   }
 }

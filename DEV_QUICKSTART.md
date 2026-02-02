@@ -4,14 +4,28 @@
 - Node 22+
 - Docker
 
-## 1) Start Postgres
+## 1) Start everything (DB + migrate + API + indexer)
 From `agenthive/`:
+
+```bash
+docker compose up -d --build
+```
+
+This will:
+- start Postgres
+- run migrations once via the `migrate` service
+- start API + indexer after migrations complete
+
+## 2) Local (non-docker) dev loop (optional)
+If you want to run services directly with Node instead of Docker:
+
+### Start Postgres
 
 ```bash
 docker compose up -d db
 ```
 
-## 2) Run migrations
+### Run migrations
 
 ```bash
 export DATABASE_URL='postgres://agenthive:agenthive@localhost:54321/agenthive'
@@ -19,7 +33,7 @@ cd packages/db
 npm run db:migrate
 ```
 
-## 3) Run indexer
+### Run indexer
 
 ```bash
 export DATABASE_URL='postgres://agenthive:agenthive@localhost:54321/agenthive'
@@ -34,7 +48,7 @@ npm run dev
 # npm run dev
 ```
 
-## 4) Run API
+### Run API
 
 ```bash
 export DATABASE_URL='postgres://agenthive:agenthive@localhost:54321/agenthive'
