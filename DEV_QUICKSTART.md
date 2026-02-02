@@ -16,6 +16,20 @@ This will:
 - run migrations once via the `migrate` service
 - start API + indexer after migrations complete
 
+## Indexer catch-up mode (temporary)
+If you are backfilling and want the indexer to catch up to head faster (e.g. after posting a new fixture reply), temporarily increase throughput:
+
+- Set `BATCH_SIZE` higher (e.g. `200`–`500`)
+- Set `POLL_MS` lower (e.g. `0`–`500`)
+
+Then restart:
+
+```bash
+docker compose restart indexer
+```
+
+After catch-up, revert to conservative values to reduce RPC load.
+
 ## 2) Local (non-docker) dev loop (optional)
 If you want to run services directly with Node instead of Docker:
 
