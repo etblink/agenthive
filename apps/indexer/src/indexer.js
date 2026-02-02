@@ -42,10 +42,22 @@ function extractTags(jsonMetadata) {
 
 function isAgentHive(jsonMetadata) {
   // v1 canonical: app-based.
-  // Allow tag-based ingestion only when explicitly enabled (useful for PeakD/manual testing).
+  // Tag-based ingestion is optional and controlled by env.
   const acceptTags = process.env.AGENTHIVE_ACCEPT_TAGS === '1';
   const tags = extractTags(jsonMetadata);
-  return jsonMetadata?.app === 'agenthive/1.0' || (acceptTags && tags.includes('agenthive'));
+
+  if (jsonMetadata?.app === 'agenthive/1.0') return true;
+
+  if (!acceptTags) return false;
+
+  // Optional tag allowlist for testing large communities.
+  // Example: AGENTHIVE_TAG_WHITELIST=hive-167922,agenthive
+  const whitelist = (process.env.AGENTHIVE_TAG_WHITELIST ?? 'agenthive')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  return tags.some((t) => whitelist.includes(t));
 }
 
 function bodyHash(body) {

@@ -369,6 +369,44 @@ async function loadContentWithReplies(contentId) {
   return { item, replies };
 }
 
+async function loadThread({ rootAuthor, rootPermlink, depth }) {
+  const maxDepth = Math.max(1, Math.min(Number(depth ?? 1), 10));
+
+  const { rows: rootRows } = await pool.query(
+    `select * from content where author=$1 and permlink=$2`,
+    [rootAuthor, rootPermlink]
+  );
+  if (rootRows.length === 0) return null;
+  const root = rootRows[0];
+
+  const { rows: replies } = await pool.query(
+    `with recursive thread as (
+       select
+         c.content_id, c.author, c.permlink, c.parent_author, c.parent_permlink,
+         c.created_at, c.is_root, c.title, c.body,
+         1 as depth
+       from content c
+       where c.parent_author=$1 and c.parent_permlink=$2
+
+       union all
+
+       select
+         c.content_id, c.author, c.permlink, c.parent_author, c.parent_permlink,
+         c.created_at, c.is_root, c.title, c.body,
+         t.depth + 1 as depth
+       from content c
+       join thread t
+         on c.parent_author=t.author and c.parent_permlink=t.permlink
+       where t.depth < $3
+     )
+     select * from thread
+     order by created_at asc`,
+    [rootAuthor, rootPermlink, maxDepth]
+  );
+
+  return { root, replies, depth: maxDepth };
+}
+
 // Preferred: query-string form (does not fight URL encoding for '/').
 //   /api/content?content_id=%40author%2Fpermlink
 app.get('/api/content', async (req, reply) => {
@@ -376,6 +414,22 @@ app.get('/api/content', async (req, reply) => {
   if (!contentId) return reply.code(400).send({ error: 'bad_request', message: 'content_id required' });
 
   const out = await loadContentWithReplies(contentId);
+  if (!out) return reply.code(404).send({ error: 'not_found' });
+  return out;
+});
+
+// Thread endpoint (depth-limited)
+//   /api/thread?author=<rootAuthor>&permlink=<rootPermlink>&depth=3
+app.get('/api/thread', async (req, reply) => {
+  const author = String(req.query.author ?? '').trim().toLowerCase();
+  const permlink = String(req.query.permlink ?? '').trim();
+  const depth = Number(req.query.depth ?? 1);
+
+  if (!author || !permlink) {
+    return reply.code(400).send({ error: 'bad_request', message: 'author and permlink required' });
+  }
+
+  const out = await loadThread({ rootAuthor: author, rootPermlink: permlink, depth });
   if (!out) return reply.code(404).send({ error: 'not_found' });
   return out;
 });
