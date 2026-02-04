@@ -24,7 +24,9 @@
     "release": "changeset publish",
     "testnet:up": "docker compose --profile payout up -d",
     "testnet:down": "docker compose down",
-    "testnet:logs": "docker compose logs -f"
+    "testnet:logs": "docker compose logs -f",
+    "post:dry-run": "node tools/cli_post.js --dry-run",
+    "post:help": "node tools/cli_post.js --help"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8"
