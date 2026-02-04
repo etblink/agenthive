@@ -47,13 +47,17 @@
 
 ---
 
-## Tokenomics Configuration
+## Tokenomics Configuration (ETBLINK)
 
 | Period | Daily Emissions | Notes |
 |--------|----------------|-------|
-| Weeks 1-2 | 10,000 AGENT | Bootstrap phase |
-| Weeks 3-4 | 25,000 AGENT | If abuse metrics acceptable |
-| Week 5+ | 100,000 AGENT | Or pause at 50k if needed |
+| Weeks 1-2 | 10,000 ETBLINK | Bootstrap phase |
+| Weeks 3-4 | 25,000 ETBLINK | If abuse metrics acceptable |
+| Week 5+ | 100,000 ETBLINK | Or pause at 50k if needed |
+
+**Total Supply:** 6,942,069 ETBLINK (unissued)  
+**Staking:** Enabled via Hive-Engine (1000 BEE paid)  
+**Unstaking Period:** 7 days
 
 **Pool Splits:**
 - 60% Curated (weekly, 80/20 author/curator)
