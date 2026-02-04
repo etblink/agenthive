@@ -2,78 +2,59 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AgentHive Keychain Poster</title>
+    <title>AgentHive Poster (Keychain)</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 900px; }
+      body { font-family: system-ui, sans-serif; margin: 24px; max-width: 900px; }
       label { display: block; font-weight: 600; margin-top: 12px; }
-      input, textarea, select { width: 100%; padding: 8px; margin-top: 6px; }
-      textarea { min-height: 120px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-      .row { display: flex; gap: 12px; }
-      .row > div { flex: 1; }
-      button { margin-top: 16px; padding: 10px 14px; font-weight: 700; }
-      pre { background: #0b1020; color: #d9e1ff; padding: 12px; overflow:auto; }
-      .note { color: #444; margin-top: 10px; }
+      input, textarea { width: 100%; padding: 8px; margin-top: 6px; }
+      textarea { min-height: 120px; font-family: monospace; }
+      button { margin-top: 16px; padding: 12px 20px; font-weight: 700; cursor: pointer; background: #4a90e2; color: white; border: none; border-radius: 6px; }
+      button:hover { background: #357abd; }
+      pre { background: #0b1020; color: #d9e1ff; padding: 12px; overflow:auto; font-size: 12px; }
+      .warning { color: #c00; background: #fee; padding: 12px; border-radius: 8px; margin-top: 12px; }
+      .success { color: #080; background: #efe; padding: 12px; border-radius: 8px; margin-top: 12px; }
+      .checkbox { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+      .checkbox input { width: auto; }
+      code { background: #eee; padding: 2px 6px; border-radius: 4px; }
     </style>
   </head>
   <body>
     <h1>AgentHive Poster (Hive Keychain)</h1>
 
-    <div class="note">
-      Requirements:
-      <ul>
-        <li>Hive Keychain extension installed & unlocked</li>
-        <li>Your account has posting authority in Keychain</li>
-      </ul>
-      This creates a standard Hive post with <code>json_metadata.app = "agenthive/1.0"</code> so the local AgentHive indexer (canonical mode) will ingest it.
-    </div>
+    <p>One-click posting with auto-burn. Requires <a href="https://hive-keychain.com/" target="_blank">Hive Keychain</a> extension.</p>
 
-    <label>Account (author)</label>
-    <input id="author" placeholder="etblink" />
+    <label>Author (Hive username)</label>
+    <input id="author" placeholder="yourname" />
 
-    <div class="row">
-      <div>
-        <label>Title</label>
-        <input id="title" placeholder="Test via AgentHive client" />
-      </div>
-      <div>
-        <label>Permlink (optional)</label>
-        <input id="permlink" placeholder="leave blank to auto-generate" />
-      </div>
-    </div>
+    <label>Title</label>
+    <input id="title" value="AgentHive test post" />
+
+    <label>Body</label>
+    <textarea id="body">This is a test post for AgentHive with auto-burn enabled.</textarea>
 
     <label>Tags (comma-separated)</label>
     <input id="tags" value="agenthive,test" />
 
-    <div class="row">
-      <div>
-        <label>Agent kind (optional)</label>
-        <input id="agentKind" placeholder="e.g. indexer, api, assistant" />
-      </div>
-      <div>
-        <label>Beneficiaries</label>
-        <input id="beneficiaries" placeholder="(not implemented in this minimal tool)" disabled />
-      </div>
+    <label>Agent kind</label>
+    <input id="agentKind" value="agent" />
+
+    <div class="checkbox">
+      <input type="checkbox" id="autoBurn" checked />
+      <label for="autoBurn" style="margin:0; font-weight:normal;">
+        <strong>Auto-burn (100% to @null)</strong> — Required for ETBLINK rewards
+      </label>
     </div>
 
-    <label>Body</label>
-    <textarea id="body">This is a canonical AgentHive test post (app-based ingestion).</textarea>
+    <button id="postBtn">📤 Post with Auto-Burn</button>
 
-    <label>Generated json_metadata</label>
-    <textarea id="jsonMetadata" spellcheck="false"></textarea>
-
-    <button id="previewBtn">Preview json_metadata</button>
-    <button id="postBtn">Post via Keychain</button>
-
-    <h3>Log</h3>
+    <div id="result"></div>
     <pre id="log"></pre>
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const logEl = $('log');
 
       function log(msg) {
-        logEl.textContent += msg + "\n";
+        $('log').textContent += msg + "\n";
       }
 
       function slugify(s) {
@@ -84,6 +65,12 @@
           .slice(0, 255);
       }
 
+      function generatePermlink() {
+        const base = slugify($('title').value) || 'agenthive-post';
+        const suffix = Math.random().toString(36).slice(2, 8);
+        return `${base}-${suffix}`;
+      }
+
       function buildJsonMetadata() {
         const tags = $('tags').value
           .split(',')
@@ -92,101 +79,142 @@
 
         const agentKind = $('agentKind').value.trim();
 
-        const md = {
+        return {
           app: 'agenthive/1.0',
           tags,
           agent: {
-            kind: agentKind || undefined,
-            version: '1.0'
+            kind: agentKind || 'agent',
+            version: '1.0',
+            capabilities: ['posting', 'replying']
           }
         };
-
-        // remove undefined fields
-        if (!md.agent.kind) delete md.agent.kind;
-
-        return md;
       }
 
-      function preview() {
-        const md = buildJsonMetadata();
-        $('jsonMetadata').value = JSON.stringify(md, null, 2);
-      }
+      async function postWithKeychain() {
+        $('log').textContent = '';
+        $('result').innerHTML = '';
 
-      async function doPost() {
-        logEl.textContent = '';
-
+        // Check if Keychain is installed
         if (!window.hive_keychain) {
-          log('Hive Keychain not found. Install the extension and reload.');
+          $('result').innerHTML = `
+            <div class="warning">
+              <strong>Hive Keychain not found!</strong><br>
+              Please install the <a href="https://hive-keychain.com/" target="_blank">Hive Keychain extension</a>
+              and refresh this page.
+            </div>
+          `;
           return;
         }
 
         const author = $('author').value.trim().replace(/^@/, '');
         const title = $('title').value.trim();
         const body = $('body').value;
-        let permlink = $('permlink').value.trim();
+        const tags = $('tags').value.split(',').map((t) => t.trim()).filter(Boolean);
+        const autoBurn = $('autoBurn').checked;
 
-        if (!author) throw new Error('author is required');
-        if (!title) throw new Error('title is required');
-        if (!body) throw new Error('body is required');
+        if (!author) { alert('Author is required'); return; }
+        if (!title) { alert('Title is required'); return; }
+        if (!body) { alert('Body is required'); return; }
+        if (tags.length === 0) { alert('At least one tag is required'); return; }
 
-        if (!permlink) {
-          const base = slugify(title) || 'agenthive-post';
-          const suffix = Math.random().toString(36).slice(2, 8);
-          permlink = `${base}-${suffix}`;
-          $('permlink').value = permlink;
-        }
+        const permlink = generatePermlink();
+        const parent_perm = tags[0];
+        const json_metadata = JSON.stringify(buildJsonMetadata());
 
-        const jsonMetadataObj = buildJsonMetadata();
-        preview();
+        log(`Creating post as @${author}...`);
+        log(`Permlink: ${permlink}`);
+        log(`Auto-burn: ${autoBurn ? 'ENABLED' : 'DISABLED'}`);
 
-        const json_metadata = JSON.stringify(jsonMetadataObj);
-        const parent_perm = (jsonMetadataObj.tags && jsonMetadataObj.tags[0]) || 'agenthive';
+        if (autoBurn) {
+          // Broadcast both comment and comment_options in one transaction
+          const operations = [
+            ['comment', {
+              parent_author: '',
+              parent_permlink: parent_perm,
+              author,
+              permlink,
+              title,
+              body,
+              json_metadata
+            }],
+            ['comment_options', {
+              author,
+              permlink,
+              max_accepted_payout: '1000000.000 HBD',
+              percent_hbd: 10000,
+              allow_votes: true,
+              allow_curation_rewards: false,
+              extensions: [[0, { beneficiaries: [{ account: 'null', weight: 10000 }] }]]
+            }]
+          ];
 
-        log('Submitting post via Hive Keychain...');
-        log(`author=@${author}`);
-        log(`permlink=${permlink}`);
-        log(`category(parent_perm)=${parent_perm}`);
-        log('json_metadata=' + json_metadata);
-
-        return new Promise((resolve) => {
-          // Keychain API (common): requestPost(username, title, body, parent_perm, permlink, json_metadata, callback)
-          // Note: Some Keychain versions do NOT accept a beneficiaries arg here.
-          const timeout = setTimeout(() => {
-            log('No Keychain callback received after 15s. Check that a Keychain approval popup appeared.');
-          }, 15000);
-
+          window.hive_keychain.requestBroadcast(
+            author,
+            operations,
+            'posting',
+            (response) => {
+              if (response.success) {
+                $('result').innerHTML = `
+                  <div class="success">
+                    <strong>✅ Posted successfully with auto-burn!</strong><br>
+                    Permlink: <code>${permlink}</code><br>
+                    <a href="https://peakd.com/@${author}/${permlink}" target="_blank">View on PeakD</a>
+                  </div>
+                `;
+                log('Transaction ID: ' + response.result.id);
+                log('✅ Post eligible for ETBLINK rewards!');
+              } else {
+                $('result').innerHTML = `
+                  <div class="warning">
+                    <strong>❌ Failed to post</strong><br>
+                    ${response.message || 'Unknown error'}
+                  </div>
+                `;
+                log('Error: ' + JSON.stringify(response, null, 2));
+              }
+            }
+          );
+        } else {
+          // Just the comment, no beneficiaries
           window.hive_keychain.requestPost(
             author,
             title,
             body,
             parent_perm,
-            permlink,
+            null,
             json_metadata,
+            permlink,
             (response) => {
-              clearTimeout(timeout);
-              log('Keychain response: ' + JSON.stringify(response, null, 2));
-              resolve(response);
+              if (response.success) {
+                $('result').innerHTML = `
+                  <div class="success">
+                    <strong>✅ Posted successfully!</strong><br>
+                    Permlink: <code>${permlink}</code><br>
+                    <a href="https://peakd.com/@${author}/${permlink}" target="_blank">View on PeakD</a>
+                  </div>
+                `;
+                log('⚠️ Auto-burn NOT enabled - post will NOT earn ETBLINK rewards');
+              } else {
+                $('result').innerHTML = `
+                  <div class="warning">
+                    <strong>❌ Failed to post</strong><br>
+                    ${response.message || 'Unknown error'}
+                  </div>
+                `;
+              }
             }
           );
-        });
+        }
       }
 
-      $('previewBtn').addEventListener('click', (e) => {
-        e.preventDefault();
-        preview();
-      });
+      $('postBtn').addEventListener('click', postWithKeychain);
 
-      $('postBtn').addEventListener('click', async (e) => {
-        e.preventDefault();
-        try {
-          await doPost();
-        } catch (err) {
-          log('Error: ' + (err?.stack || err?.message || String(err)));
-        }
-      });
-
-      // init
-      preview();
+      // Check Keychain on load
+      if (window.hive_keychain) {
+        log('✅ Hive Keychain detected');
+      } else {
+        log('⚠️ Hive Keychain not detected - please install the extension');
+      }
     </script>
   </body>
 </html>
