@@ -14,9 +14,17 @@
     "db:migrate": "npm run db:migrate -w @agenthive/db",
     "api:dev": "npm run dev -w @agenthive/api",
     "indexer:dev": "npm run dev -w @agenthive/indexer",
+    "stake-tracker:dev": "npm run dev -w @agenthive/stake-tracker",
+    "participation:dev": "npm run dev -w @agenthive/participation",
+    "participation:run": "npm run run-once -w @agenthive/participation",
+    "payout:participation": "npm run participation -w @agenthive/payout",
+    "payout:curated": "npm run curated -w @agenthive/payout",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "changeset publish"
+    "release": "changeset publish",
+    "testnet:up": "docker compose --profile payout up -d",
+    "testnet:down": "docker compose down",
+    "testnet:logs": "docker compose logs -f"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8"

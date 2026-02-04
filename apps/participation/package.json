@@ -1,0 +1,13 @@
+{
+  "name": "@agenthive/participation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "run-once": "RUN_NOW=1 node src/index.js"
+  },
+  "dependencies": {
+    "pg": "^8.12.0"
+  }
+}

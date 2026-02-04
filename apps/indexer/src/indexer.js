@@ -10,6 +10,9 @@ const rpcUrls = (process.env.HIVE_RPC_URLS ?? 'https://api.hive.blog')
 const pollMs = Number(process.env.POLL_MS ?? 3000);
 const batchSize = Math.max(1, Math.min(Number(process.env.BATCH_SIZE ?? 50), 500));
 
+// Auto-burn enforcement: require 100% beneficiaries to @null
+const AUTO_BURN_ENFORCED = process.env.AGENTHIVE_AUTO_BURN_ENFORCED === '1';
+
 console.log(
   JSON.stringify({
     at: new Date().toISOString(),
@@ -17,12 +20,12 @@ console.log(
     rpcUrls,
     pollMs,
     batchSize,
-    acceptTags: process.env.AGENTHIVE_ACCEPT_TAGS === '1'
+    acceptTags: process.env.AGENTHIVE_ACCEPT_TAGS === '1',
+    autoBurnEnforced: AUTO_BURN_ENFORCED
   })
 );
 
 function dhiveClient() {
-  // dhive Client accepts array of URLs
   return new Client(rpcUrls);
 }
 
@@ -41,8 +44,6 @@ function extractTags(jsonMetadata) {
 }
 
 function isAgentHive(jsonMetadata) {
-  // v1 canonical: app-based.
-  // Tag-based ingestion is optional and controlled by env.
   const acceptTags = process.env.AGENTHIVE_ACCEPT_TAGS === '1';
   const tags = extractTags(jsonMetadata);
 
@@ -50,14 +51,69 @@ function isAgentHive(jsonMetadata) {
 
   if (!acceptTags) return false;
 
-  // Optional tag allowlist for testing large communities.
-  // Example: AGENTHIVE_TAG_WHITELIST=hive-167922,agenthive
   const whitelist = (process.env.AGENTHIVE_TAG_WHITELIST ?? 'agenthive')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 
   return tags.some((t) => whitelist.includes(t));
+}
+
+/**
+ * Check if comment has 100% beneficiaries to @null (auto-burn)
+ * Returns true if burn is valid (or if enforcement disabled)
+ */
+function checkAutoBurn(opBody, tx) {
+  if (!AUTO_BURN_ENFORCED) return true;
+  
+  // Look for comment_options operation in same transaction
+  const commentOps = tx.operations?.filter(op => 
+    Array.isArray(op) && op[0] === 'comment_options'
+  ) || [];
+  
+  // Find matching comment_options for this comment
+  const matchingOption = commentOps.find(op => {
+    const optBody = op[1];
+    return optBody?.author === opBody.author && 
+           optBody?.permlink === opBody.permlink;
+  });
+  
+  if (!matchingOption) {
+    console.log(JSON.stringify({
+      at: new Date().toISOString(),
+      msg: 'auto_burn_reject_no_options',
+      author: opBody.author,
+      permlink: opBody.permlink
+    }));
+    return false;
+  }
+  
+  const optBody = matchingOption[1];
+  const beneficiaries = optBody?.extensions
+    ?.filter(ext => ext[0] === 'comment_payout_beneficiaries')
+    ?.flatMap(ext => ext[1]?.beneficiaries || []) || [];
+  
+  // Check if 100% goes to @null
+  const nullBeneficiary = beneficiaries.find(b => b.account === 'null');
+  const totalWeight = beneficiaries.reduce((sum, b) => sum + (b.weight || 0), 0);
+  
+  // Must have @null with 10000 weight (100%) and no other beneficiaries
+  const isValid = nullBeneficiary && 
+                  nullBeneficiary.weight === 10000 && 
+                  totalWeight === 10000;
+  
+  if (!isValid) {
+    console.log(JSON.stringify({
+      at: new Date().toISOString(),
+      msg: 'auto_burn_reject_invalid',
+      author: opBody.author,
+      permlink: opBody.permlink,
+      beneficiaries,
+      totalWeight
+    }));
+  }
+  
+  return isValid;
 }
 
 function bodyHash(body) {
@@ -80,21 +136,22 @@ async function upsertContent({
   created_at,
   title,
   body,
-  json_metadata
+  json_metadata,
+  burn_valid
 }) {
   const tags = extractTags(json_metadata);
-  const content_id = `@${author}/${permlink}`; // good enough for MVP
+  const content_id = `@${author}/${permlink}`;
   const is_root = !parent_author;
 
   await pool.query(
     `insert into content(
         content_id, author, permlink, parent_author, parent_permlink,
         created_at, is_root, title, body, body_hash,
-        json_metadata, tags, app, agent_kind, url
+        json_metadata, tags, app, agent_kind, url, burn_valid
      ) values (
         $1,$2,$3,$4,$5,
         $6,$7,$8,$9,$10,
-        $11,$12,$13,$14,$15
+        $11,$12,$13,$14,$15,$16
      )
      on conflict (content_id) do update set
         parent_author=excluded.parent_author,
@@ -106,7 +163,8 @@ async function upsertContent({
         tags=excluded.tags,
         app=excluded.app,
         agent_kind=excluded.agent_kind,
-        url=excluded.url`,
+        url=excluded.url,
+        burn_valid=excluded.burn_valid`,
     [
       content_id,
       author,
@@ -122,7 +180,8 @@ async function upsertContent({
       tags,
       json_metadata?.app ?? null,
       json_metadata?.agent?.kind ?? null,
-      `https://peakd.com/@${author}/${permlink}`
+      `https://peakd.com/@${author}/${permlink}`,
+      burn_valid ?? true
     ]
   );
 }
@@ -164,9 +223,6 @@ async function withRetry(fn, opts = {}) {
 
 function bootstrapIndexed({ lib, current }) {
   if (Number.isFinite(current) && current != null) return current;
-
-  // Default: start close to head (LIB - lag).
-  // Override with AGENTHIVE_BOOTSTRAP_LAG to control how far behind LIB we begin.
   const lag = Math.max(0, Number(process.env.AGENTHIVE_BOOTSTRAP_LAG ?? 50));
   return lib - lag;
 }
@@ -214,6 +270,9 @@ async function mainLoop() {
 
             const jm = safeJsonParse(opBody.json_metadata ?? '') ?? {};
             if (!isAgentHive(jm)) continue;
+            
+            // Check auto-burn
+            const burnValid = checkAutoBurn(opBody, tx);
 
             await ensureAccount(opBody.author);
 
@@ -225,7 +284,8 @@ async function mainLoop() {
               created_at,
               title: opBody.title || null,
               body: opBody.body || null,
-              json_metadata: jm
+              json_metadata: jm,
+              burn_valid: burnValid
             });
           }
         }
@@ -235,7 +295,6 @@ async function mainLoop() {
       }
     } catch (err) {
       console.error('indexer loop error:', err);
-      // Recreate client in case an endpoint got wedged.
       try {
         client = dhiveClient();
       } catch {}

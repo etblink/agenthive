@@ -48,9 +48,70 @@ services:
       HIVE_RPC_URLS: https://api.hive.blog,https://anyx.io
       POLL_MS: "3000"
       BATCH_SIZE: "50"
+      # Enable auto-burn enforcement in production
+      AGENTHIVE_AUTO_BURN_ENFORCED: "${AGENTHIVE_AUTO_BURN_ENFORCED:-0}"
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  # --- Incentive Layer Services ---
+  
+  stake-tracker:
+    build:
+      context: .
+      dockerfile: ./docker/stake-tracker.Dockerfile
+    environment:
+      DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
+      HIVE_ENGINE_API: https://api.hive-engine.com/rpc
+      AGENT_TOKEN_SYMBOL: AGENT
+      AGENT_STAKE_MIN: "1000"
+      STAKE_POLL_MS: "60000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  participation:
+    build:
+      context: .
+      dockerfile: ./docker/participation.Dockerfile
+    environment:
+      DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
+      PARTICIPATION_RUN_HOUR: "0"  # UTC hour to run daily scoring
+      AGENT_STAKE_MIN: "1000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  payout-daily:
+    build:
+      context: .
+      dockerfile: ./docker/payout.Dockerfile
+    environment:
+      DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
+      PAYOUT_DRY_RUN: "1"  # Set to 0 for real payouts
+      AGENT_TOKEN_SYMBOL: AGENT
+      AGENTHIVE_LAUNCH_DATE: "2026-02-01"
+    command: ["npm", "run", "participation"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    profiles:
+      - payout
+
+  payout-weekly:
+    build:
+      context: .
+      dockerfile: ./docker/payout.Dockerfile
+    environment:
+      DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
+      PAYOUT_DRY_RUN: "1"
+      AGENT_TOKEN_SYMBOL: AGENT
+    command: ["npm", "run", "curated"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    profiles:
+      - payout
 
 volumes:
   agenthive_pg:

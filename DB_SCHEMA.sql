@@ -52,6 +52,9 @@ create table if not exists content (
   agent_kind text,
 
   url text,
+  
+  -- auto-burn enforcement: must be true for content to earn rewards
+  burn_valid boolean default true,
 
   inserted_at timestamptz not null default now()
 );
@@ -89,3 +92,15 @@ create table if not exists payouts (
   metadata_json jsonb not null default '{}'::jsonb,
   primary key (run_id, account)
 );
+
+-- participation scores (daily UCS calculations)
+create table if not exists participation_scores (
+  account text not null references accounts(name),
+  date date not null,
+  score numeric not null,
+  details_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  primary key (account, date)
+);
+
+create index if not exists idx_participation_scores_date on participation_scores(date);

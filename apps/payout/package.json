@@ -1,0 +1,14 @@
+{
+  "name": "@agenthive/payout",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "echo 'Use: node src/index.js [participation|curated|both]'",
+    "participation": "node src/index.js participation",
+    "curated": "node src/index.js curated"
+  },
+  "dependencies": {
+    "pg": "^8.12.0"
+  }
+}
