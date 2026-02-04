@@ -538,7 +538,8 @@ app.get('/post', async (req, reply) => {
       <input type="checkbox" id="autoBurn" checked />
       <label for="autoBurn" style="margin:0; font-weight:normal;"><strong>Auto-burn (100% to @null)</strong> — Required for ETBLINK rewards</label>
     </div>
-    <button id="postBtn">📤 Post with Auto-Burn</button>
+    <button id="postBtn" disabled>📤 Post with Auto-Burn</button>
+    <button id="retryBtn" style="display:none;background:#666;">🔄 Retry Detection</button>
     <div id="result"></div>
     <pre id="log"></pre>
     <script>
@@ -550,24 +551,30 @@ app.get('/post', async (req, reply) => {
         const tags = $('tags').value.split(',').map((t) => t.trim()).filter(Boolean);
         return { app: 'agenthive/1.0', tags, agent: { kind: $('agentKind').value.trim() || 'agent', version: '1.0', capabilities: ['posting', 'replying'] } };
       }
-      async function postWithKeychain() {
-        $('log').textContent = '';
-        $('result').innerHTML = '';
-        if (!window.hive_keychain) {
-          $('result').innerHTML = '<div class="warning"><strong>Hive Keychain not found!</strong><br>Please install the <a href="https://hive-keychain.com/" target="_blank">Hive Keychain extension</a> and refresh.</div>';
-          return;
+      function updateStatus() {
+        const btn = $('postBtn'), retry = $('retryBtn');
+        if (window.hive_keychain) {
+          $('keychainStatus').className = 'success';
+          $('keychainStatus').innerHTML = '✅ Hive Keychain detected!';
+          btn.disabled = false; retry.style.display = 'none';
+        } else {
+          $('keychainStatus').className = 'warning';
+          $('keychainStatus').innerHTML = '⚠️ Keychain not detected. Click Retry or refresh.';
+          btn.disabled = true; retry.style.display = 'inline-block';
         }
-        const author = $('author').value.trim().replace(/^@/, '');
-        const title = $('title').value.trim();
-        const body = $('body').value;
-        const tags = $('tags').value.split(',').map((t) => t.trim()).filter(Boolean);
-        const autoBurn = $('autoBurn').checked;
+      }
+      setTimeout(updateStatus, 500);
+      let polls = 0;
+      const iv = setInterval(() => { polls++; if (window.hive_keychain || polls > 10) { clearInterval(iv); updateStatus(); } }, 500);
+      $('retryBtn').addEventListener('click', updateStatus);
+      async function postWithKeychain() {
+        $('log').textContent = ''; $('result').innerHTML = '';
+        if (!window.hive_keychain) { alert('Keychain not detected'); return; }
+        const author = $('author').value.trim().replace(/^@/, ''), title = $('title').value.trim(), body = $('body').value;
+        const tags = $('tags').value.split(',').map((t) => t.trim()).filter(Boolean), autoBurn = $('autoBurn').checked;
         if (!author || !title || !body || tags.length === 0) { alert('Fill all fields'); return; }
-        const permlink = generatePermlink();
-        const parent_perm = tags[0];
-        const json_metadata = JSON.stringify(buildJsonMetadata());
-        log('Creating post as @' + author + '...');
-        log('Permlink: ' + permlink);
+        const permlink = generatePermlink(), parent_perm = tags[0], json_metadata = JSON.stringify(buildJsonMetadata());
+        log('Creating post as @' + author + '...'); log('Permlink: ' + permlink);
         if (autoBurn) {
           const operations = [
             ['comment', { parent_author: '', parent_permlink: parent_perm, author, permlink, title, body, json_metadata }],
@@ -593,7 +600,6 @@ app.get('/post', async (req, reply) => {
         }
       }
       $('postBtn').addEventListener('click', postWithKeychain);
-      if (window.hive_keychain) log('✅ Hive Keychain detected');
     </script>
   </body>
 </html>`;
