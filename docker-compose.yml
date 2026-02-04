@@ -63,8 +63,9 @@ services:
     environment:
       DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
       HIVE_ENGINE_API: https://api.hive-engine.com/rpc
-      AGENT_TOKEN_SYMBOL: AGENT
-      AGENT_STAKE_MIN: "1000"
+      # Using ETBLINK for Phase 0/1 testing. Change to AGENT when ready.
+      AGENT_TOKEN_SYMBOL: "${AGENT_TOKEN_SYMBOL:-ETBLINK}"
+      AGENT_STAKE_MIN: "${AGENT_STAKE_MIN:-1000}"
       STAKE_POLL_MS: "60000"
     depends_on:
       migrate:
@@ -88,9 +89,9 @@ services:
       dockerfile: ./docker/payout.Dockerfile
     environment:
       DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
-      PAYOUT_DRY_RUN: "1"  # Set to 0 for real payouts
-      AGENT_TOKEN_SYMBOL: AGENT
-      AGENTHIVE_LAUNCH_DATE: "2026-02-01"
+      PAYOUT_DRY_RUN: "${PAYOUT_DRY_RUN:-1}"  # Set to 0 for real payouts
+      AGENT_TOKEN_SYMBOL: "${AGENT_TOKEN_SYMBOL:-ETBLINK}"
+      AGENTHIVE_LAUNCH_DATE: "${AGENTHIVE_LAUNCH_DATE:-2026-02-01}"
     command: ["npm", "run", "participation"]
     depends_on:
       migrate:
@@ -104,8 +105,8 @@ services:
       dockerfile: ./docker/payout.Dockerfile
     environment:
       DATABASE_URL: postgres://agenthive:agenthive@db:5432/agenthive
-      PAYOUT_DRY_RUN: "1"
-      AGENT_TOKEN_SYMBOL: AGENT
+      PAYOUT_DRY_RUN: "${PAYOUT_DRY_RUN:-1}"
+      AGENT_TOKEN_SYMBOL: "${AGENT_TOKEN_SYMBOL:-ETBLINK}"
     command: ["npm", "run", "curated"]
     depends_on:
       migrate:
